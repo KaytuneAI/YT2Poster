@@ -49,6 +49,7 @@ YT2Poster/
 - 可使用 Portable Python，无需管理员权限
 
 ### 第二步：将整个zip目录copy到本地，或者从Github clone下来。
+zip下载地址：https://github.com/KaytuneAI/YT2Poster/archive/refs/heads/main.zip
 
 ### 第三步：启动本地服务
 - Windows 用户：双击运行 `start_server.bat`
