@@ -1,0 +1,454 @@
+
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Youtube视频摘要海报生成器v1 by Kaytune k.AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'cream': '#F5E6D3',
+            'teal': {
+              600: '#2A7F7F',
+              700: '#1F5F5F'
+            },
+            'orange': {
+              600: '#D35F3F',
+              700: '#B54F2F'
+            },
+            'forest': {
+              600: '#3B7355',
+              700: '#2A5740'
+            },
+            'brown': {
+              600: '#8B4513',
+              700: '#723710'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-50 p-6">
+  <div class="max-w-4xl mx-auto space-y-4">
+    <div class="w-full mb-8">
+      <img src="banner.jpg" alt="Youtube视频生成海报" class="w-[1000px] object-cover rounded-lg shadow-lg">
+    </div>
+    <h1 class="text-2xl font-bold">🎬 Youtube视频摘要海报生成器v1 by Kaytune k.AI</h1>
+
+    <input id="ytUrl" type="text" class="w-full p-2 border rounded" placeholder="输入 YouTube 视频链接" />
+    <button onclick="extractId()" class="mt-2 bg-teal-600 text-cream px-4 py-2 rounded w-full md:w-64 hover:bg-teal-700">📸 1. 提取视频封面图和Title</button>
+
+    <div id="thumbnail" class="my-4"></div>
+
+    <div id="apiKeySection">
+      <div class="flex justify-between items-center mb-1">
+        <input id="apikey" type="text" class="w-full p-2 border rounded mr-2" placeholder="请输入你的 DeepSeek API Key" />
+        <a href="https://platform.deepseek.com/" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs whitespace-nowrap">
+          如何申请Deepseek API
+        </a>
+      </div>
+      <small class="text-gray-400 text-xs block mb-3">你的 API Key 仅保存在本地浏览器，不会上传</small>
+    </div>
+
+    <div id="apiKeySaved" class="hidden">
+      <div class="flex justify-between items-center">
+        <div class="text-gray-400 text-xs">🔐 API Key 已保存在本地浏览器，不会上传</div>
+        <button onclick="deleteApiKey()" class="text-xs text-red-500 hover:text-red-700 ml-2">🗑️ 删除</button>
+      </div>
+    </div>
+
+    
+    <button onclick="fetchTranscript()" class="mt-2 bg-orange-600 text-cream px-4 py-2 rounded w-full md:w-64 hover:bg-orange-700">📝 2. 自动获取字幕与上传时间</button>
+
+    <textarea id="transcript" rows="10" class="w-full p-2 border rounded" placeholder="粘贴 YouTube 转录内容"></textarea>
+    <button onclick="analyzeTranscript()" class="mt-2 bg-forest-600 text-cream px-4 py-2 rounded w-full md:w-64 hover:bg-forest-700">🪄 3. 生成摘要与故事</button>
+
+    <div id="poster" class="mt-6 p-4 border rounded bg-white shadow"></div>
+    <button onclick="exportPoster()" class="mt-4 bg-brown-600 text-cream px-4 py-2 rounded hover:bg-brown-700 w-full md:w-64">
+      📸 4. 导出海报
+    </button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>
+// 在页面加载时尝试恢复之前保存的 Key
+window.addEventListener('DOMContentLoaded', () => {
+  const savedKey = localStorage.getItem("deepseek_api_key");
+  if (savedKey) {
+    document.getElementById("apikey").value = savedKey;
+    document.getElementById("apiKeySection").classList.add("hidden");
+    document.getElementById("apiKeySaved").classList.remove("hidden");
+  }
+});
+
+// 修改保存API Key的逻辑
+function saveApiKey(apiKey) {
+  localStorage.setItem("deepseek_api_key", apiKey);
+  document.getElementById("apiKeySection").classList.add("hidden");
+  document.getElementById("apiKeySaved").classList.remove("hidden");
+}
+
+// 在extractId函数中修改API Key验证部分
+async function extractId() {
+      const button = document.querySelector('button');
+      button.disabled = true;
+      button.innerHTML = '正在提取...';
+
+      const url = document.getElementById('ytUrl').value;
+      const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if (match) {
+        videoId = match[1];
+        
+        try {
+          // 获取视频信息
+          const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+          const data = await response.json();
+          const title = data.title;
+          const channelTitle = data.author_name;
+          const channelUrl = data.author_url;
+          
+          // 保存频道信息供后续使用
+          window.channelInfo = {
+            title: channelTitle,
+            url: channelUrl
+          };
+
+          // 获取并验证 API Key
+          const apiKey = document.getElementById("apikey").value.trim();
+          if (!apiKey && !localStorage.getItem("deepseek_api_key")) {
+            alert("请先输入 API Key！");
+            button.disabled = false;
+            button.innerHTML = '📸 1. 提取视频封面图和Title';
+            return;
+          }
+          if (apiKey) {
+            saveApiKey(apiKey);
+          }
+          localStorage.setItem("deepseek_api_key", apiKey);
+
+          // 翻译标题
+          const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: "deepseek-chat",
+              messages: [{ 
+                role: "user", 
+                content: `请将这个YouTube视频标题翻译成中文，和原先长度差不多，需要符合英文标题的内容，简介但符合社交传播,不要告诉我推理过程：${title}` 
+              }],
+              temperature: 0.7
+            })
+          });
+
+          const translationData = await res.json();
+          const translatedTitle = translationData.choices[0].message.content.trim();
+
+          // 保存标题供后续使用
+          window.videoTitle = {
+            original: title,
+            translated: translatedTitle
+          };
+
+          const imgUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+          document.getElementById('thumbnail').innerHTML = `
+            <div class="space-y-2 mb-4">
+              <h2 class="text-xl font-bold" contenteditable="true" id="editableTitle">${translatedTitle}</h2>
+              <p class="text-gray-600 text-sm">${title}</p>
+            </div>
+            <img src="${imgUrl}" class="w-full rounded shadow" alt="封面图" />
+            <p class="text-sm text-blue-600 mt-2">
+              <a href="https://www.youtube.com/watch?v=${videoId}" target="_blank">访问原始视频</a>
+            </p>
+          `;
+
+          // 添加标题编辑事件监听
+          document.getElementById('editableTitle').addEventListener('input', function(e) {
+            window.videoTitle.translated = e.target.innerText;
+          });
+
+        } catch (error) {
+          console.error('获取视频信息失败:', error);
+          // 如果获取标题失败，仍然显示封面图
+          const imgUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+          document.getElementById('thumbnail').innerHTML = `
+            <img src="${imgUrl}" class="w-full rounded shadow" alt="封面图" />
+            <p class="text-sm text-blue-600 mt-2">
+              <a href="https://www.youtube.com/watch?v=${videoId}" target="_blank">访问原始视频</a>
+            </p>
+          `;
+        }
+      } else {
+        alert("无效的链接格式！");
+      }
+
+      button.disabled = false;
+      button.innerHTML = '📸 1. 提取视频封面图和Title';
+    }
+
+    async function analyzeTranscript() {
+      const button = document.querySelector('button:last-of-type');
+      const poster = document.getElementById('poster');
+      
+      button.disabled = true;
+      button.innerHTML = '分析中...';
+      
+      poster.innerHTML = `
+        <div class="flex items-center justify-center p-4">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+          <span class="ml-2 text-gray-600">正在分析内容，请稍候...</span>
+        </div>
+      `;
+
+      const transcript = document.getElementById('transcript').value.trim();
+      if (!transcript) {
+        button.disabled = false;
+        button.innerHTML = '生成摘要与故事';
+        poster.innerHTML = '';
+        return alert("请粘贴转录内容");
+      }
+
+      const prompt = `以下是一个访谈节目的完整转录文本。请帮我完成以下任务：\n\n1. 用中文写一段  300 字的摘要，突出该视频的核心内容和主题。\n2. 提取并改写五个精彩片段或有趣的故事（每段约 200字），用中文表达，适合用于社交媒体宣传。但是生成的文字不用提及多少字，在开头不要提及摘要几百字这样的话，在结尾也不要提及有五段社交媒体的的宣传文案类似的字眼 \n\n访谈原文：\n${transcript}`;
+
+      try {
+        // 获取并验证 API Key
+        const apiKey = document.getElementById("apikey").value.trim();
+        if (!apiKey) {
+          alert("请先输入 API Key！");
+          button.disabled = false;
+          button.innerHTML = '生成摘要与故事';
+          return;
+        }
+        localStorage.setItem("deepseek_api_key", apiKey);
+
+        const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: "deepseek-chat",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7
+          })
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(`API 响应错误：${errorData.error?.message || '未知错误'}`);
+        }
+
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        
+        // 清理提示文本的通用函数
+        function cleanPromptText(text) {
+          const patterns = [
+            /[#*]+/g,                                    // 清理#和*符号
+            /五个社交媒体宣传片段/g,                     // 清理具体提示文本
+            /---\s*社交媒体(精彩|宣传)片段[（(]\d+段[）)]/g,  // 清理带数字的片段提示
+            /社交媒体(精彩|宣传)片段：?/g,               // 清理不带数字的片段提示
+            /\n{2,}/g,                                   // 清理多余空行
+            /^[\s\n]*|[\s\n]*$/g                        // 清理首尾空白
+          ];
+          
+          return patterns.reduce((text, pattern) => {
+            return text.replace(pattern, '');
+          }, text);
+        }
+        
+        // 使用清理函数处理内容
+        const cleanContent = cleanPromptText(content);
+        
+        // 分割内容
+        const parts = cleanContent.split(/\n?\d[\.\、\)]\s?/).filter(Boolean);
+        const summary = parts[0] || '';
+        const stories = parts.slice(1);
+
+        // 获取当前视频URL
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        
+        
+let html = `
+<div class="bg-white p-6 space-y-4 max-w-3xl mx-auto">
+  <h1 class="text-4xl font-extrabold text-center text-gray-900">
+    ${window.videoTitle?.translated || '视频标题（点击修改）'}
+  </h1>
+
+  <div class="text-center space-y-1">
+    <div class="text-base text-gray-900">
+      Youtube频道：
+      <a href="${window.channelInfo?.url || '#'}" target="_blank" class="hover:text-orange-600 font-medium">
+        ${window.channelInfo?.title || '未知频道'}
+      </a>
+    </div>
+    <div class="text-sm text-gray-900">
+      日期：${window.uploadedAt || '未知时间'}
+    </div>
+  </div>
+
+  <div class="w-full flex justify-center">
+    <img src="https://img.youtube.com/vi/${videoId}/maxresdefault.jpg" 
+         onerror="this.src='https://img.youtube.com/vi/${videoId}/hqdefault.jpg';"
+         class="rounded-lg shadow-md max-w-full w-[75%]" />
+  </div>
+
+  <div class="text-center space-y-2 mb-4">
+    
+    <div class="text-sm text-gray-500 break-all">
+      视频链接：${videoUrl}
+    </div>
+  </div>
+
+  <div class="bg-teal-50 p-4 rounded text-base text-gray-800 leading-relaxed" contenteditable="true">
+    📝 <strong class="text-teal-600">内容摘要</strong><br>${summary}
+  </div>
+
+  <div class="space-y-4">
+    <h2 class="text-xl font-semibold text-forest-600">🎯 精彩故事</h2>
+    <ul class="space-y-4 text-base text-gray-800">
+      ${stories.map((story, i) => {
+        const lines = story.split('\n');
+        const title = lines[0];
+        const content = lines.slice(1).join('\n');
+        return `
+          <li class="bg-cream/20 rounded p-4" contenteditable="true">
+            <div class="flex items-start gap-3">
+              <div class="bg-orange-600 text-cream rounded-full w-8 h-8 flex items-center justify-center text-base font-bold flex-shrink-0">${i + 1}</div>
+              <div class="flex-1">
+                <h3 class="text-2xl font-bold text-brown-600 mb-3">${title}</h3>
+                <p class="text-gray-700 leading-relaxed">${content}</p>
+              </div>
+            </div>
+          </li>`;
+      }).join('')}
+    </ul>
+  </div>
+
+  <div class="text-center text-sm text-teal-600/70 mt-8 pt-4 border-t border-teal-100">
+    ✨ 本摘要由凯淳Kaytune k.AI智能体生成，版权由原Youtube频道所有。
+    <br>
+    本摘要仅用于学习交流，不得用于任何商业目的。
+  </div>
+</div>
+`;
+
+    document.getElementById("poster").innerHTML = html;
+
+      } catch (err) {
+        console.error('API 调用错误:', err);
+        poster.innerHTML = `<div class="text-red-500">调用 DeepSeek API 失败：${err.message}</div>`;
+      } finally {
+        button.disabled = false;
+        button.innerHTML = '生成海报';
+      }
+    }
+  </script>
+  <script>
+    async function exportPoster() {
+      const button = document.querySelector('button[onclick="exportPoster()"]');
+      const originalText = button.innerHTML;
+      
+      try {
+        button.disabled = true;
+        button.innerHTML = '📸 正在生成图片...';
+        
+        const poster = document.getElementById("poster");
+        if (!poster.innerHTML.trim()) {
+          throw new Error('海报内容为空，请先生成海报内容！');
+        }
+        
+        const canvas = await html2canvas(poster, { 
+          scale: 2,
+          logging: false,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff'
+        });
+        
+        const link = document.createElement("a");
+        link.download = `poster-${videoId || Date.now()}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        
+        button.innerHTML = '✅ 导出成功！';
+        setTimeout(() => {
+          button.innerHTML = originalText;
+        }, 2000);
+      } catch (err) {
+        console.error('导出失败:', err);
+        button.innerHTML = '❌ 导出失败';
+        alert(`导出失败：${err.message}`);
+        setTimeout(() => {
+          button.innerHTML = originalText;
+        }, 2000);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    // 添加删除API Key的函数
+    function deleteApiKey() {
+      if (confirm('确定要删除保存的API Key吗？删除后需要重新输入。')) {
+        localStorage.removeItem("deepseek_api_key");
+        document.getElementById("apikey").value = '';
+        document.getElementById("apiKeySection").classList.remove("hidden");
+        document.getElementById("apiKeySaved").classList.add("hidden");
+      }
+    }
+  </script>
+</body>
+</html>
+
+
+</script>
+<script>
+async function fetchTranscript() {
+  const url = document.getElementById("ytUrl").value.trim();
+  if (!url) return alert("1. 请先输入 YouTube 视频链接");
+
+  try {
+    const button = document.querySelector('button[onclick="fetchTranscript()"]');
+    button.disabled = true;
+    button.innerHTML = "⏳ 获取中...";
+
+    const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    const videoId = match ? match[1] : null;
+    if (!videoId) throw new Error("无效的 YouTube 链接");
+
+    const transcriptRes = await fetch("/transcript?videoId=" + videoId);
+    const transcriptJson = await transcriptRes.json();
+    if (transcriptJson.error) throw new Error(transcriptJson.error);
+    const cleaned = transcriptJson.transcript;
+
+    const dateRes = await fetch("/published_at?videoId=" + videoId);
+    const dateJson = await dateRes.json();
+    if (dateJson.error) throw new Error(dateJson.error);
+    
+    // 保存上传时间供后续使用
+    window.uploadedAt = dateJson.publishedAt;
+    document.getElementById("transcript").value = cleaned;
+
+  } catch (err) {
+    console.error("字幕获取失败：", err);
+    alert("字幕获取失败：" + err.message);
+  } finally {
+    const button = document.querySelector('button[onclick="fetchTranscript()"]');
+    button.disabled = false;
+    button.innerHTML = "📝 2. 自动获取字幕与上传时间";
+  }
+}
+</script>
+</body>
+</html>
+
+
+</script>
