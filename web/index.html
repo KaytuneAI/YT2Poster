@@ -4,6 +4,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Youtube视频摘要海报生成器v1 by Kaytune k.AI</title>
+  <!-- 添加思源黑体 CDN -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -27,6 +29,9 @@
               600: '#8B4513',
               700: '#723710'
             }
+          },
+          fontFamily: {
+            'sans': ['Noto Sans SC', 'sans-serif']
           }
         }
       }
@@ -66,7 +71,14 @@
     <button onclick="fetchTranscript()" class="mt-2 bg-orange-600 text-cream px-4 py-2 rounded w-full md:w-64 hover:bg-orange-700">📝 2. 自动获取字幕与上传时间</button>
 
     <textarea id="transcript" rows="10" class="w-full p-2 border rounded" placeholder="粘贴 YouTube 转录内容"></textarea>
-    <button onclick="analyzeTranscript()" class="mt-2 bg-forest-600 text-cream px-4 py-2 rounded w-full md:w-64 hover:bg-forest-700">🪄 3. 生成摘要与故事</button>
+    
+    <div class="flex items-center justify-between gap-2">
+      <button onclick="analyzeTranscript()" class="bg-forest-600 text-cream px-4 py-2 rounded hover:bg-forest-700 w-full md:w-64">🪄 3. 生成摘要</button>
+      <select id="summaryType" class="p-1.5 text-sm border rounded w-32 bg-white text-gray-700">
+        <option value="social">社媒风格</option>
+        <option value="tech">技术风格</option>
+      </select>
+    </div>
 
     <div id="poster" class="mt-6 p-4 border rounded bg-white shadow"></div>
     <button onclick="exportPoster()" class="mt-4 bg-brown-600 text-cream px-4 py-2 rounded hover:bg-brown-700 w-full md:w-64">
@@ -210,12 +222,41 @@ async function extractId() {
       const transcript = document.getElementById('transcript').value.trim();
       if (!transcript) {
         button.disabled = false;
-        button.innerHTML = '生成摘要与故事';
+        button.innerHTML = '生成摘要';
         poster.innerHTML = '';
         return alert("请粘贴转录内容");
       }
 
-      const prompt = `以下是一个访谈节目的完整转录文本。请帮我完成以下任务：\n\n1. 用中文写一段  300 字的摘要，突出该视频的核心内容和主题。\n2. 提取并改写五个精彩片段或有趣的故事（每段约 200字），用中文表达，适合用于社交媒体宣传。但是生成的文字不用提及多少字，在开头不要提及摘要几百字这样的话，在结尾也不要提及有五段社交媒体的的宣传文案类似的字眼 \n\n访谈原文：\n${transcript}`;
+      // 获取选择的摘要类型
+      const summaryType = document.getElementById('summaryType').value;
+      
+      // 根据类型选择不同的 prompt
+      let prompt;
+      if (summaryType === 'social') {
+        prompt = `以下是一个访谈节目的完整转录文本。请帮我完成以下任务：\n\n1. 用中文写一段  300 字的摘要，突出该视频的核心内容和主题。\n2. 提取并改写五个精彩片段或有趣的故事（每段约 200字），用中文表达，适合用于社交媒体宣传。但是生成的文字不用提及多少字，在开头不要提及摘要几百字这样的话，在结尾也不要提及有五段社交媒体的的宣传文案类似的字眼 \n\n访谈原文：\n${transcript}`;
+      } else {
+        prompt = `以下是一个技术相关的访谈/演讲的完整转录文本。请帮我完成以下任务：
+
+1. 用中文写一段300字的技术视角总结，重点分析该内容的技术趋势、行业影响和管理启示。
+
+2. 从以下维度提取5-8个重要话题（具体数量根据内容长度和深度来定）：
+   - 技术进展与创新
+   - 行业趋势与变革
+   - 管理方法与实践
+   - 商业模式与战略
+   - 未来展望与挑战
+   
+每个话题需要：
+- 标题要简洁有趣但专业（可以适当活泼）
+- 内容篇幅200-400字
+- 保持专业性的同时注重可读性
+- 突出关键技术点和实践经验
+- 适当引用原文的具体论述
+
+请直接输出内容，不要包含任何格式说明。以下是原文：
+
+${transcript}`;
+      }
 
       try {
         // 获取并验证 API Key
@@ -223,7 +264,7 @@ async function extractId() {
         if (!apiKey) {
           alert("请先输入 API Key！");
           button.disabled = false;
-          button.innerHTML = '生成摘要与故事';
+          button.innerHTML = '生成摘要';
           return;
         }
         localStorage.setItem("deepseek_api_key", apiKey);
@@ -279,32 +320,28 @@ async function extractId() {
         
 let html = `
 <div class="bg-white p-6 space-y-4 max-w-3xl mx-auto">
-  <h1 class="text-4xl font-extrabold text-center text-gray-900">
-    ${window.videoTitle?.translated || '视频标题（点击修改）'}
-  </h1>
-
-  <div class="text-center space-y-1">
-    <div class="text-base text-gray-900">
-      Youtube频道：
-      <a href="${window.channelInfo?.url || '#'}" target="_blank" class="hover:text-orange-600 font-medium">
-        ${window.channelInfo?.title || '未知频道'}
-      </a>
-    </div>
-    <div class="text-sm text-gray-900">
-      日期：${window.uploadedAt || '未知时间'}
-    </div>
-  </div>
-
-  <div class="w-full flex justify-center">
+  <div class="w-full">
     <img src="https://img.youtube.com/vi/${videoId}/maxresdefault.jpg" 
-         onerror="this.src='https://img.youtube.com/vi/${videoId}/hqdefault.jpg';"
-         class="rounded-lg shadow-md max-w-full w-[75%]" />
+         onerror="this.src='https://img.youtube.com/vi/${videoId}/hqdefault.jpg';" 
+         class="rounded-lg shadow-md w-full" />
   </div>
 
-  <div class="text-center space-y-2 mb-4">
-    
-    <div class="text-sm text-gray-500 break-all">
-      视频链接：${videoUrl}
+  <div class="space-y-2 mt-6">
+    <h1 class="text-4xl font-extrabold text-gray-900 text-left">
+      ${window.videoTitle?.translated || '视频标题(点击修改)'}
+    </h1>
+
+    <div class="flex flex-col space-y-1 text-sm text-gray-900 mt-4">
+      <div class="flex items-center space-x-1">
+        <span>👤</span>
+        <a href="${window.channelInfo?.url || '#'}" target="_blank" class="hover:text-orange-600">
+          ${window.channelInfo?.title || '未知频道'}
+        </a>
+        <span>📅</span>
+        <span>${window.uploadedAt ? window.uploadedAt.substring(0, 10) : '未知时间'}</span>
+        <span>🔗</span>
+        <a href="${videoUrl}" target="_blank" class="text-gray-500 hover:text-gray-700">${videoUrl}</a>
+      </div>
     </div>
   </div>
 
@@ -313,7 +350,9 @@ let html = `
   </div>
 
   <div class="space-y-4">
-    <h2 class="text-xl font-semibold text-forest-600">🎯 精彩故事</h2>
+    <h2 class="text-xl font-semibold text-forest-600">
+      ${summaryType === 'tech' ? '🔬 技术笔记' : '🎯 精彩故事'}
+    </h2>
     <ul class="space-y-4 text-base text-gray-800">
       ${stories.map((story, i) => {
         const lines = story.split('\n');
@@ -334,9 +373,9 @@ let html = `
   </div>
 
   <div class="text-center text-sm text-teal-600/70 mt-8 pt-4 border-t border-teal-100">
-    ✨ 本摘要由凯淳Kaytune k.AI智能体生成，版权由原Youtube频道所有。
+    ✨ 本摘要由凯淳Kaytune k.AI智能体生成, 版权由原Youtube频道所有.
     <br>
-    本摘要仅用于学习交流，不得用于任何商业目的。
+    本摘要仅用于学习交流, 不得用于任何商业目的.
   </div>
 </div>
 `;
@@ -375,8 +414,10 @@ let html = `
         });
         
         const link = document.createElement("a");
-        link.download = `poster-${videoId || Date.now()}.png`;
-        link.href = canvas.toDataURL("image/png");
+        // 获取中文标题，如果没有则使用时间戳
+        const title = (window.videoTitle?.translated || '').substring(0, 20) || Date.now();
+        link.download = `${title}.jpg`;
+        link.href = canvas.toDataURL("image/jpeg", 0.9);
         link.click();
         
         button.innerHTML = '✅ 导出成功！';
@@ -446,6 +487,11 @@ async function fetchTranscript() {
     button.innerHTML = "📝 2. 自动获取字幕与上传时间";
   }
 }
+</script>
+</body>
+</html>
+
+
 </script>
 </body>
 </html>
